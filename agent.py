@@ -68,7 +68,7 @@ def run_agent(pnr: str, last_name: str, message: str) -> str:            # ✏�
     answer = ""
     turns = 1
     while response.stop_reason == "tool_use" and turns < MAX_TOOL_CALLS:
-        messages.append({"role": "assistant", "content": text_of(response)})
+        messages.append({"role": "assistant", "content": response.content})
         messages.append({"role": "user", "content": tool_results(response)})
         answer = text_of(response)
         response = client.messages.create(
@@ -77,6 +77,7 @@ def run_agent(pnr: str, last_name: str, message: str) -> str:            # ✏�
         )
         turns += 1
 
+    answer = text_of(response)
     return answer
 
 
@@ -119,14 +120,25 @@ def build_tools() -> List[Dict[str, Any]]:                 # ✏️ Build 1, ste
                 "type": "object",
                 "properties": {
                     "flight_no": {"type": "string"},
-                    "date": {"type": "string", "description": "MM/DD/YYYY"},
+                    "date": {
+                        "type": "string",
+                        "description": "The flight's local departure date as YYYY-MM-DD, "
+                                       "exactly as lookup_booking returns it (e.g. 2025-05-08).",
+                    },
                 },
                 "required": ["flight_no", "date"],
             },
         },
         {
             "name": "search_alternatives",
-            "description": "search",
+            "description": (
+                "Find replacement Larkspur flights for the customer's disrupted segment. "
+                "Use this once get_flight_status shows the flight is cancelled or delayed "
+                "enough that the customer may want to move, and before offering or holding "
+                "any seat. Returns ranked options, each with an option_id, flights, date, "
+                "times, cabin and seats left; pass that option_id to hold_seat or "
+                "check_policy. Never invent an alternative flight that this tool did not return."
+            ),
             "input_schema": {
                 "type": "object",
                 "properties": {"pnr": {"type": "string"}},
