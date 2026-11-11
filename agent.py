@@ -8,22 +8,54 @@ before the code does, so read the trace first:
 Where you edit:   grep -n '✏' agent.py   (six marks, one per place)
 Steps and gates:  https://anthropicpartnerbasecamp.bts.com/
 """
+
 from __future__ import annotations
 from typing import Any, Dict, List
-from support import (MODEL, SYSTEM_PROMPT, call_local, execute_tool, mcp_client,
-                     new_session, next_available_day, record_tool_result,
-                     runtime_preamble)
+from support import (
+    MODEL,
+    SYSTEM_PROMPT,
+    call_local,
+    execute_tool,
+    mcp_client,
+    new_session,
+    next_available_day,
+    record_tool_result,
+    runtime_preamble,
+)
 
-MAX_TOOL_CALLS = 8  # Larkspur's own build capped the loop here; then a human takes over.
+MAX_TOOL_CALLS = (
+    8  # Larkspur's own build capped the loop here; then a human takes over.
+)
 
-TONE_ADDENDUM = ""                       # ✏️ Build 4, step 4.1, intelligence goal
-EXTRA_TOOLS: List[Dict[str, Any]] = []   # ✏️ Build 2, step 2.1: schemas for the tools you add
-LOCAL_TOOLS: Dict[str, Any] = {}         # ✏️ Build 2, step 2.1: the functions behind them
+TONE_ADDENDUM = ""  # ✏️ Build 4, step 4.1, intelligence goal
+EXTRA_TOOLS: List[Dict[str, Any]] = [
+    {
+        "name": "next_available_day",
+        "description": "Find the earliest date with an open seat on a given route.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "origin": {"type": "string"},
+                "dest": {"type": "string"},
+                "date": {"type": "string", "description": "MM/DD/YYYY"},
+                "cabin": {"type": "string", "enum": ["Y", "J", "F"]},
+            },
+            "required": ["origin", "dest", "date"],
+        },
+    }
+]  # ✏️ Build 2, step 2.1: schemas for the tools you add
+LOCAL_TOOLS: Dict[str, str] = {
+    "next_available_day": next_available_day
+}  # ✏️ Build 2, step 2.1: the functions behind them
 
 
 def text_of(response) -> str:
     """Given. The last non-empty text block, never content[0]."""
-    texts = [b.text for b in response.content if getattr(b, "type", None) == "text" and b.text]
+    texts = [
+        b.text
+        for b in response.content
+        if getattr(b, "type", None) == "text" and b.text
+    ]
     return texts[-1] if texts else ""
 
 
@@ -44,15 +76,17 @@ def tool_results(response) -> List[Dict[str, Any]]:
             output = call_local(LOCAL_TOOLS[block.name], block.name, block.input)
         else:
             output = execute_tool(block.name, block.input)
-        results.append({
-            "type": "tool_result",
-            "tool_use_id": block.id,
-            "content": str(output),
-        })
+        results.append(
+            {
+                "type": "tool_result",
+                "tool_use_id": block.id,
+                "content": str(output),
+            }
+        )
     return results
 
 
-def run_agent(pnr: str, last_name: str, message: str) -> str:            # ✏️ Build 1, step 1.2
+def run_agent(pnr: str, last_name: str, message: str) -> str:  # ✏️ Build 1, step 1.2
     """Run the tool loop until Claude stops asking for tools. Return its final text."""
     client, tracer = new_session()
     tools = tool_list()
@@ -61,26 +95,32 @@ def run_agent(pnr: str, last_name: str, message: str) -> str:            # ✏�
     ]
 
     response = client.messages.create(
-        model=MODEL, max_tokens=4096, system=runtime_preamble() + SYSTEM_PROMPT + TONE_ADDENDUM,
-        thinking={"type": "adaptive"}, tools=tools, messages=messages,
+        model=MODEL,
+        max_tokens=4096,
+        system=runtime_preamble() + SYSTEM_PROMPT + TONE_ADDENDUM,
+        thinking={"type": "adaptive"},
+        tools=tools,
+        messages=messages,
     )
 
-    answer = ""
     turns = 1
     while response.stop_reason == "tool_use" and turns < MAX_TOOL_CALLS:
-        messages.append({"role": "assistant", "content": text_of(response)})
+        messages.append({"role": "assistant", "content": response.content})
         messages.append({"role": "user", "content": tool_results(response)})
-        answer = text_of(response)
         response = client.messages.create(
-            model=MODEL, max_tokens=4096, system=runtime_preamble() + SYSTEM_PROMPT + TONE_ADDENDUM,
-            thinking={"type": "adaptive"}, tools=tools, messages=messages,
+            model=MODEL,
+            max_tokens=4096,
+            system=runtime_preamble() + SYSTEM_PROMPT + TONE_ADDENDUM,
+            thinking={"type": "adaptive"},
+            tools=tools,
+            messages=messages,
         )
         turns += 1
 
-    return answer
+    return text_of(response)
 
 
-def tool_list() -> List[Dict[str, Any]]:                   # ✏️ Build 2, step 2.2
+def tool_list() -> List[Dict[str, Any]]:  # ✏️ Build 2, step 2.2
     """Given. Exactly what Claude is offered on every turn; run.py --show-tools
     prints this list."""
     return build_tools() + EXTRA_TOOLS
@@ -90,7 +130,7 @@ def tool_list() -> List[Dict[str, Any]]:                   # ✏️ Build 2, ste
 # Below this line: what Claude is told about each tool. Step 1.3.
 # The functions these describe are written and correct, in support/tools.py.
 # ──────────────────────────────────────────────────────────────────────────────
-def build_tools() -> List[Dict[str, Any]]:                 # ✏️ Build 1, step 1.3
+def build_tools() -> List[Dict[str, Any]]:  # ✏️ Build 1, step 1.3
     """Anthropic-shaped schemas: name, description, input_schema. What Claude is
     told about each of the nine tools, and all it is ever told."""
     return [
@@ -104,7 +144,10 @@ def build_tools() -> List[Dict[str, Any]]:                 # ✏️ Build 1, ste
             ),
             "input_schema": {
                 "type": "object",
-                "properties": {"pnr": {"type": "string"}, "last_name": {"type": "string"}},
+                "properties": {
+                    "pnr": {"type": "string"},
+                    "last_name": {"type": "string"},
+                },
                 "required": ["pnr", "last_name"],
             },
         },
@@ -126,10 +169,22 @@ def build_tools() -> List[Dict[str, Any]]:                 # ✏️ Build 1, ste
         },
         {
             "name": "search_alternatives",
-            "description": "search",
+            "description": (
+                "Search for alternative flights for a disrupted booking. Use this after "
+                "lookup_booking and get_flight_status confirm the segment is delayed, "
+                "cancelled or diverted, and the case is in scope; do not call it for an "
+                "on-time flight. Returns a list of options, each with an option_id, which "
+                "is what hold_seat and check_policy (chosen_option_id) need. Read-only: "
+                "it does not hold or change anything."
+            ),
             "input_schema": {
                 "type": "object",
-                "properties": {"pnr": {"type": "string"}},
+                "properties": {
+                    "pnr": {
+                        "type": "string",
+                        "description": "Confirmation code (PNR) from the customer's booking.",
+                    }
+                },
                 "required": ["pnr"],
             },
         },
@@ -148,9 +203,15 @@ def build_tools() -> List[Dict[str, Any]]:                 # ✏️ Build 1, ste
                 "type": "object",
                 "properties": {
                     "pnr": {"type": "string"},
-                    "cause_code": {"type": "string", "enum": ["WX", "ATC", "MX", "CREW", "SEC"]},
+                    "cause_code": {
+                        "type": "string",
+                        "enum": ["WX", "ATC", "MX", "CREW", "SEC"],
+                    },
                     "delay_minutes": {"type": "integer"},
-                    "status": {"type": "string", "enum": ["ON_TIME", "DELAYED", "CANCELLED", "DIVERTED"]},
+                    "status": {
+                        "type": "string",
+                        "enum": ["ON_TIME", "DELAYED", "CANCELLED", "DIVERTED"],
+                    },
                     "wait_minutes_for_alternative": {"type": "integer"},
                     "chosen_option_id": {"type": "string"},
                 },
@@ -162,7 +223,10 @@ def build_tools() -> List[Dict[str, Any]]:                 # ✏️ Build 1, ste
             "description": "Place a 15-minute hold on one alternative. Reversible. It simply expires.",
             "input_schema": {
                 "type": "object",
-                "properties": {"option_id": {"type": "string"}, "pnr": {"type": "string"}},
+                "properties": {
+                    "option_id": {"type": "string"},
+                    "pnr": {"type": "string"},
+                },
                 "required": ["option_id", "pnr"],
             },
         },
@@ -175,7 +239,10 @@ def build_tools() -> List[Dict[str, Any]]:                 # ✏️ Build 1, ste
             ),
             "input_schema": {
                 "type": "object",
-                "properties": {"hold_id": {"type": "string"}, "confirmation_token": {"type": "string"}},
+                "properties": {
+                    "hold_id": {"type": "string"},
+                    "confirmation_token": {"type": "string"},
+                },
                 "required": ["hold_id", "confirmation_token"],
             },
         },
@@ -189,7 +256,10 @@ def build_tools() -> List[Dict[str, Any]]:                 # ✏️ Build 1, ste
             "input_schema": {
                 "type": "object",
                 "properties": {
-                    "voucher_type": {"type": "string", "enum": ["meal", "ground", "hotel", "goodwill"]},
+                    "voucher_type": {
+                        "type": "string",
+                        "enum": ["meal", "ground", "hotel", "goodwill"],
+                    },
                     "amount_usd": {"type": "number"},
                     "pnr": {"type": "string"},
                     "policy_row_id": {"type": "string"},
@@ -207,8 +277,10 @@ def build_tools() -> List[Dict[str, Any]]:                 # ✏️ Build 1, ste
             "input_schema": {
                 "type": "object",
                 "properties": {
-                    "pnr": {"type": "string"}, "reason": {"type": "string"},
-                    "summary_for_human": {"type": "string"}, "queue": {"type": "string"},
+                    "pnr": {"type": "string"},
+                    "reason": {"type": "string"},
+                    "summary_for_human": {"type": "string"},
+                    "queue": {"type": "string"},
                 },
                 "required": ["pnr", "reason", "summary_for_human"],
             },
@@ -218,7 +290,10 @@ def build_tools() -> List[Dict[str, Any]]:                 # ✏️ Build 1, ste
             "description": "Send the customer a written confirmation of what was just done. Benign.",
             "input_schema": {
                 "type": "object",
-                "properties": {"pnr": {"type": "string"}, "message": {"type": "string"}},
+                "properties": {
+                    "pnr": {"type": "string"},
+                    "message": {"type": "string"},
+                },
                 "required": ["pnr", "message"],
             },
         },
