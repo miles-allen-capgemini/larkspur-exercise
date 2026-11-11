@@ -17,8 +17,94 @@ from support import (MODEL, SYSTEM_PROMPT, call_local, execute_tool, mcp_client,
 MAX_TOOL_CALLS = 8  # Larkspur's own build capped the loop here; then a human takes over.
 
 TONE_ADDENDUM = ""                       # ✏️ Build 4, step 4.1, intelligence goal
-EXTRA_TOOLS: List[Dict[str, Any]] = []   # ✏️ Build 2, step 2.1: schemas for the tools you add
-LOCAL_TOOLS: Dict[str, Any] = {}         # ✏️ Build 2, step 2.1: the functions behind them
+EXTRA_TOOLS: List[Dict[str, Any]] = [   # ✏️ Build 2, step 2.1: schemas for the tools you add
+    {
+        "name": "fare_rules",
+        "description": (
+            "Read the exact wording of Larkspur's Customer Commitment handbook (v14.3) so "
+            "you can explain WHY a customer is or is not owed something, e.g. 'why do I "
+            "not get a hotel?' or 'why only $15?'. Use it only when the customer asks for "
+            "the reason behind an entitlement, and only after check_policy has run. Never "
+            "use it to decide what is owed: check_policy decides, this tool explains. "
+            "Returns one handbook section as text; quote it, do not paraphrase beyond it."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "section": {
+                    "type": "string",
+                    "enum": ["fare_families", "disruptions", "care", "automation_limits"],
+                    "description": (
+                        "fare_families = what each fare includes; disruptions = rebooking "
+                        "and refund rules for delays, cancellations and diversions; care = "
+                        "meals, hotel and ground transport while waiting; automation_limits "
+                        "= what chat cannot do and hands to a human."
+                    ),
+                },
+            },
+            "required": ["section"],
+        },
+    },
+    {
+        "name": "care_entitlements",
+        "description": (
+            "Answer 'do I get a meal or a hotel while I wait?' in detail: the meal, hotel "
+            "and ground-transport care for one policy row, with the conditions that switch "
+            "each one on (wait thresholds, overnight away from home), what is offered "
+            "instead when it is not covered, loyalty meal bonuses, and whether a voucher "
+            "auto-approves or needs a human. Use it only after check_policy has returned a "
+            "policy_row_id, and only when the customer asks about care while waiting. It "
+            "does not decide the row: check_policy does. Use it before issue_voucher so "
+            "the amount and approval are right."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "policy_row_id": {
+                    "type": "string",
+                    "description": "The policy_row_id exactly as check_policy returned it, e.g. UNC-B3 or CTL-CXL.",
+                },
+            },
+            "required": ["policy_row_id"],
+        },
+    },
+]
+
+
+def _fare_rules(section: str) -> Dict[str, Any]:
+    """Return one numbered section of the handbook excerpt."""
+    import pathlib, re
+    numbers = {"fare_families": "4", "disruptions": "5", "care": "6", "automation_limits": "7"}
+    if section not in numbers:
+        return {"error": f"section must be one of {sorted(numbers)}, got {section!r}"}
+    text = (pathlib.Path(__file__).parent / "data" / "americas" / "fare_rules_excerpt.md").read_text(encoding="utf-8")
+    match = re.search(rf"^### {numbers[section]}\..*?(?=^### |\Z)", text, re.S | re.M)
+    return {"handbook_version": "14.3", "section": section, "text": match.group(0).strip() if match else ""}
+
+
+def _care_entitlements(policy_row_id: str) -> Dict[str, Any]:
+    """Return the care block for one policy row, plus the rules that adjust it."""
+    import json, pathlib
+    path = pathlib.Path(__file__).parent / "data" / "americas" / "disruption_policy.json"
+    policy = json.loads(path.read_text(encoding="utf-8"))
+    row = next((r for r in policy["rows"] if r["policy_row_id"] == policy_row_id), None)
+    if row is None:
+        ids = [r["policy_row_id"] for r in policy["rows"]]
+        return {"error": f"unknown policy_row_id {policy_row_id!r}; expected one of {ids}"}
+    return {
+        "policy_row_id": policy_row_id,
+        "policy_version": policy["version"],
+        "care": row["care"],
+        "amount_semantics": policy["amount_semantics"],
+        "loyalty_meal_bonus": {tier: {k: v for k, v in rules.items() if k.startswith("meal_bonus")}
+                               for tier, rules in policy["loyalty_rules"].items()},
+        "approval": {k: policy["auto_approval"][k] for k in ("meal", "ground", "hotel")},
+        "customer_wording": {k: policy["customer_wording"]["use"][k] for k in ("meal", "ground", "hotel")},
+        "handbook_section_6": _fare_rules("care")["text"],
+    }
+
+
+LOCAL_TOOLS: Dict[str, Any] = {"fare_rules": _fare_rules, "care_entitlements": _care_entitlements}   # ✏️ Build 2, step 2.1: the functions behind them
 
 
 def text_of(response) -> str:
