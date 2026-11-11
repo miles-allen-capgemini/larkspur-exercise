@@ -21,6 +21,8 @@ from support import (
     next_available_day,
     record_tool_result,
     runtime_preamble,
+    fare_rules,
+    care_entitlements,
 )
 
 MAX_TOOL_CALLS = (
@@ -42,10 +44,67 @@ EXTRA_TOOLS: List[Dict[str, Any]] = [
             },
             "required": ["origin", "dest", "date"],
         },
-    }
+    },
+    {
+        "name": "fare_rules",
+        "description": (
+            "Read the exact wording of Larkspur's Customer Commitment handbook (v14.3) so "
+            "you can explain WHY a customer is or is not owed something, e.g. 'why do I "
+            "not get a hotel?' or 'why only $15?'. Use it only when the customer asks for "
+            "the reason behind an entitlement, and only after check_policy has run. Never "
+            "use it to decide what is owed: check_policy decides, this tool explains. "
+            "Returns one handbook section as text; quote it, do not paraphrase beyond it."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "section": {
+                    "type": "string",
+                    "enum": [
+                        "fare_families",
+                        "disruptions",
+                        "care",
+                        "automation_limits",
+                    ],
+                    "description": (
+                        "fare_families = what each fare includes; disruptions = rebooking "
+                        "and refund rules for delays, cancellations and diversions; care = "
+                        "meals, hotel and ground transport while waiting; automation_limits "
+                        "= what chat cannot do and hands to a human."
+                    ),
+                },
+            },
+            "required": ["section"],
+        },
+    },
+    {
+        "name": "care_entitlements",
+        "description": (
+            "Answer 'do I get a meal or a hotel while I wait?' in detail: the meal, hotel "
+            "and ground-transport care for one policy row, with the conditions that switch "
+            "each one on (wait thresholds, overnight away from home), what is offered "
+            "instead when it is not covered, loyalty meal bonuses, and whether a voucher "
+            "auto-approves or needs a human. Use it only after check_policy has returned a "
+            "policy_row_id, and only when the customer asks about care while waiting. It "
+            "does not decide the row: check_policy does. Use it before issue_voucher so "
+            "the amount and approval are right."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "policy_row_id": {
+                    "type": "string",
+                    "description": "The policy_row_id exactly as check_policy returned it, e.g. UNC-B3 or CTL-CXL.",
+                },
+            },
+            "required": ["policy_row_id"],
+        },
+    },
 ]  # ✏️ Build 2, step 2.1: schemas for the tools you add
 LOCAL_TOOLS: Dict[str, str] = {
-    "next_available_day": next_available_day
+    "next_available_day": next_available_day,
+    "fare_rules": fare_rules,
+    "care_entitlements": care_entitlements,
 }  # ✏️ Build 2, step 2.1: the functions behind them
 
 
