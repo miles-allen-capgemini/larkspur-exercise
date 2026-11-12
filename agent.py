@@ -81,7 +81,7 @@ EXTRA_TOOLS: List[Dict[str, Any]] = [
             "properties": {
                 "origin": {"type": "string"},
                 "dest": {"type": "string"},
-                "date": {"type": "string", "description": "MM/DD/YYYY"},
+                "date": {"type": "string", "description": "YYYY-MM-DD"},
                 "cabin": {"type": "string", "enum": ["Y", "J", "F"]},
             },
             "required": ["origin", "dest", "date"],
@@ -96,6 +96,8 @@ EXTRA_TOOLS: List[Dict[str, Any]] = [
             "the reason behind an entitlement, and only after check_policy has run. Never "
             "use it to decide what is owed: check_policy decides, this tool explains. "
             "Returns one handbook section as text; quote it, do not paraphrase beyond it."
+            "Always use this when to provide extra information to a customer about what they're entitled to."
+            "Always name this handbook as the source when citing a policy decision."
         ),
         "input_schema": {
             "type": "object",
