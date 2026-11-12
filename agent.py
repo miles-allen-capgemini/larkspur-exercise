@@ -10,6 +10,7 @@ Steps and gates:  https://anthropicpartnerbasecamp.bts.com/
 """
 
 from __future__ import annotations
+from pathlib import Path
 from typing import Any, Dict, List
 from support import (
     MODEL,
@@ -21,13 +22,54 @@ from support import (
     next_available_day,
     record_tool_result,
     runtime_preamble,
-    fare_rules,
-    care_entitlements,
 )
 
 MAX_TOOL_CALLS = (
     8  # Larkspur's own build capped the loop here; then a human takes over.
 )
+
+FARE_RULES_PATH = Path(__file__).parent / "data" / "americas" / "fare_rules_excerpt.md"
+
+# The fare_rules tool's `section` enum -> the handbook section number it names.
+_FARE_RULES_SECTIONS = {
+    "fare_families": "4",
+    "disruptions": "5",
+    "care": "6",
+    "automation_limits": "7",
+}
+
+
+def fare_rules(section: str) -> Any:
+    """Return one handbook section, verbatim, from fare_rules_excerpt.md.
+
+    The answer comes only from that file: the text is sliced on its `### N.`
+    headings and returned unchanged so Claude can quote it. Unknown sections
+    and an unreadable file come back as an error dict, never an exception.
+    """
+    number = _FARE_RULES_SECTIONS.get((section or "").strip().lower())
+    if number is None:
+        return {
+            "error": f"Unknown section {section!r}. "
+            f"Choose one of: {', '.join(_FARE_RULES_SECTIONS)}."
+        }
+    try:
+        text = FARE_RULES_PATH.read_text(encoding="utf-8")
+    except OSError as exc:
+        return {"error": f"Cannot read {FARE_RULES_PATH.name}: {exc}"}
+
+    lines: List[str] = []
+    capturing = False
+    for line in text.splitlines():
+        if line.startswith("### "):
+            if capturing:
+                break
+            capturing = line[4:].lstrip().startswith(number + ".")
+        if capturing:
+            lines.append(line)
+    if not lines:
+        return {"error": f"Section {number} not found in {FARE_RULES_PATH.name}."}
+    return "\n".join(lines).strip()
+
 
 TONE_ADDENDUM = ""  # ✏️ Build 4, step 4.1, intelligence goal
 EXTRA_TOOLS: List[Dict[str, Any]] = [
@@ -48,8 +90,8 @@ EXTRA_TOOLS: List[Dict[str, Any]] = [
     {
         "name": "fare_rules",
         "description": (
-            "Read the exact wording of Larkspur's Customer Commitment handbook (v14.3) so "
-            "you can explain WHY a customer is or is not owed something, e.g. 'why do I "
+            "Find the exact wording of Larkspur's fair rules in from their handbook to "
+            "be able to explain WHY a customer is or is not owed something, e.g. 'why do I "
             "not get a hotel?' or 'why only $15?'. Use it only when the customer asks for "
             "the reason behind an entitlement, and only after check_policy has run. Never "
             "use it to decide what is owed: check_policy decides, this tool explains. "
@@ -100,11 +142,33 @@ EXTRA_TOOLS: List[Dict[str, Any]] = [
             "required": ["policy_row_id"],
         },
     },
+    {
+        "name": "reopen_stats",
+        "description": (
+            "Answers 'is this problem going to come back?' from eight human-handled "
+            "conversations: for each kind of problem (intent_label), how many came back "
+            "within 72 hours. Use it after you know what kind of problem the customer has, "
+            "before promising that it won't recur. It is a tiny sample, so quote the counts "
+            "and the sample size, never a trend. Takes an optional intent_label to narrow "
+            "the answer; it does not look up any individual booking."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "intent_label": {
+                    "type": "string",
+                    "description": "Optional, e.g. rebook_after_cancellation. Omit to get every kind.",
+                },
+            },
+            "required": [],
+        },
+    },
 ]  # ✏️ Build 2, step 2.1: schemas for the tools you add
 LOCAL_TOOLS: Dict[str, str] = {
     "next_available_day": next_available_day,
     "fare_rules": fare_rules,
-    "care_entitlements": care_entitlements,
+    # "care_entitlements": care_entitlements,
+    # "reopen_stats": reopen_stats,
 }  # ✏️ Build 2, step 2.1: the functions behind them
 
 
