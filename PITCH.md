@@ -8,7 +8,7 @@ Number: $0.0234 per resolved contact
 Safety check: Holds the seat but never books it.
 Next: Add more languages.
 Still broken: MCP server not implemented.
-Lever: <cost | speed | intelligence>
+Lever: cost
 
 ## Priya asked
 

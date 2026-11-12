@@ -51,7 +51,10 @@ def lookup_booking(pnr, last_name):
         booking = backend.get_booking_raw(pnr)
     except backend.NotFound as e:
         return {"error": str(e)}
-    if not any(p["last_name"].lower() == last_name.strip().lower() for p in booking["passengers"]):
+    if not any(
+        p["last_name"].lower() == last_name.strip().lower()
+        for p in booking["passengers"]
+    ):
         return {"error": "Name does not match this PNR."}
 
     seg = backend.get_disrupted_segment(booking)
@@ -67,11 +70,17 @@ def lookup_booking(pnr, last_name):
         "unaccompanied_minor": booking.get("unaccompanied_minor", False),
         "ssr_codes": [c["code"] for c in booking.get("ssr_codes", [])],
         "segment": {
-            "flight_number": seg["flight_no"], "date": seg["date"],
-            "origin": seg["origin"], "dest": seg["dest"], "cabin": seg["cabin"],
+            "flight_number": seg["flight_no"],
+            "date": seg["date"],
+            "origin": seg["origin"],
+            "dest": seg["dest"],
+            "cabin": seg["cabin"],
             "status": seg["status"],
         },
-        "untrusted_free_text": {"ops_note": seg.get("ops_note"), "remarks": booking.get("remarks", [])},
+        "untrusted_free_text": {
+            "ops_note": seg.get("ops_note"),
+            "remarks": booking.get("remarks", []),
+        },
     }
 
 
@@ -82,13 +91,23 @@ def search_alternatives(pnr):
         return {"error": str(e)}
     seg = backend.get_disrupted_segment(booking)
     return backend.search_alternatives_raw(
-        seg["origin"], seg["dest"], seg["date"], seg["cabin"],
-        pax_count=len(booking["passengers"]), exclude_flight_no=seg["flight_no"],
+        seg["origin"],
+        seg["dest"],
+        seg["date"],
+        seg["cabin"],
+        pax_count=len(booking["passengers"]),
+        exclude_flight_no=seg["flight_no"],
     )
 
 
-def check_policy(pnr, cause_code, delay_minutes, status, wait_minutes_for_alternative=None,
-                  chosen_option_id=None):
+def check_policy(
+    pnr,
+    cause_code,
+    delay_minutes,
+    status,
+    wait_minutes_for_alternative=None,
+    chosen_option_id=None,
+):
     try:
         booking = backend.get_booking_raw(pnr)
     except backend.NotFound as e:
@@ -96,24 +115,48 @@ def check_policy(pnr, cause_code, delay_minutes, status, wait_minutes_for_altern
     seg = backend.get_disrupted_segment(booking)
 
     if chosen_option_id:
-        alt_date = next((o["date"] for o in backend.search_alternatives_raw(
-            seg["origin"], seg["dest"], seg["date"], seg["cabin"],
-            exclude_flight_no=seg["flight_no"])["options"] if o["option_id"] == chosen_option_id), None)
+        alt_date = next(
+            (
+                o["date"]
+                for o in backend.search_alternatives_raw(
+                    seg["origin"],
+                    seg["dest"],
+                    seg["date"],
+                    seg["cabin"],
+                    exclude_flight_no=seg["flight_no"],
+                )["options"]
+                if o["option_id"] == chosen_option_id
+            ),
+            None,
+        )
     else:
         alt_date = backend.earliest_alternative_date(
-            seg["origin"], seg["dest"], seg["date"], seg["cabin"], len(booking["passengers"]))
-    overnight = bool(alt_date and alt_date > seg["date"] and seg["origin"] != booking["home_airport"])
+            seg["origin"],
+            seg["dest"],
+            seg["date"],
+            seg["cabin"],
+            len(booking["passengers"]),
+        )
+    overnight = bool(
+        alt_date and alt_date > seg["date"] and seg["origin"] != booking["home_airport"]
+    )
 
     escalation_context = {
         "has_partner_segment": booking.get("has_partner_segment", False),
         "is_group_booking": booking.get("is_group_booking", False),
         "unaccompanied_minor": booking.get("unaccompanied_minor", False),
-        "ssr_inventory_required": any(c["code"] in SSR_INVENTORY_CODES for c in booking.get("ssr_codes", [])),
+        "ssr_inventory_required": any(
+            c["code"] in SSR_INVENTORY_CODES for c in booking.get("ssr_codes", [])
+        ),
     }
     return backend.resolve_policy(
-        cause_code=cause_code, delay_minutes=delay_minutes, status=status,
-        fare_family=booking["fare_family"], loyalty_tier=booking["loyalty"]["tier"],
-        overnight=overnight, wait_minutes_for_alternative=wait_minutes_for_alternative,
+        cause_code=cause_code,
+        delay_minutes=delay_minutes,
+        status=status,
+        fare_family=booking["fare_family"],
+        loyalty_tier=booking["loyalty"]["tier"],
+        overnight=overnight,
+        wait_minutes_for_alternative=wait_minutes_for_alternative,
         escalation_context=escalation_context,
     )
 

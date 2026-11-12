@@ -222,7 +222,14 @@ def run_agent(pnr: str, last_name: str, message: str) -> str:  # ✏️ Build 1,
     response = client.messages.create(
         model=MODEL,
         max_tokens=4096,
-        system=runtime_preamble() + SYSTEM_PROMPT + TONE_ADDENDUM,
+        system=[
+            {
+                "type": "text",
+                "text": SYSTEM_PROMPT + TONE_ADDENDUM,
+                "cache_control": {"type": "ephemeral"},
+            },
+            {"type": "text", "text": runtime_preamble()},
+        ],
         thinking={"type": "adaptive"},
         tools=tools,
         messages=messages,
@@ -421,5 +428,6 @@ def build_tools() -> List[Dict[str, Any]]:  # ✏️ Build 1, step 1.3
                 },
                 "required": ["pnr", "message"],
             },
+            "cache_control": {"type": "ephemeral"},
         },
     ]
